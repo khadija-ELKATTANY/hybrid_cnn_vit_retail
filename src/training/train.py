@@ -24,7 +24,7 @@ from src.models.hybrid_cnn_vit import HybridCNNViT
 class Config:
     DATA_PATH = "data/generated/products_structured.csv"
     IMAGE_SIZE = 32
-    EPOCHS = 20
+    EPOCHS = 50
     BATCH_SIZE = 64
     LR = 0.001
     OUTPUT_DIR = "results"
