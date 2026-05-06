@@ -34,8 +34,8 @@ st.markdown("---")
 # ---------------------------------------------------------------------------
 # Data loading
 # ---------------------------------------------------------------------------
-DATA_FILE = "data/products.csv"
-METRICS_FILE = "runs/cnn_vit/test_metrics.json"
+DATA_FILE = "data/generated/products_structured.csv"
+METRICS_FILE = "results/test_metrics.json"
 
 
 @st.cache_data
