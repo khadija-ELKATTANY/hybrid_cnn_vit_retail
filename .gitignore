@@ -1,9 +1,29 @@
-data/
-results/
-*.csv
-*.parquet
-*.pkl
-*.pth
-*.pt
+# Python
 __pycache__/
-.ipynb_checkpoints/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Data and outputs
+data/raw/*.csv
+!data/raw/.gitkeep
+data/processed/
+results/
+runs/
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
