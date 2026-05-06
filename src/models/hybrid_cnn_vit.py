@@ -56,7 +56,7 @@ class CNNStem(nn.Module):
 
 class PatchEmbedding(nn.Module):
     """Convolutional Patch Embedding for ViT"""
-    def __init__(self, in_channels: int = 256, patch_size: int = 8, embed_dim: int = 384):
+    def __init__(self, in_channels: int = 256, patch_size: int = 2, embed_dim: int = 384):
         super().__init__()
         self.proj = nn.Conv2d(in_channels, embed_dim, kernel_size=patch_size, stride=patch_size)
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
@@ -69,7 +69,7 @@ class PatchEmbedding(nn.Module):
         
         cls_tokens = self.cls_token.expand(B, -1, -1)
         x = torch.cat((cls_tokens, x), dim=1)
-        x = x + self.pos_embed
+        x = x + self.pos_embed[:, :x.size(1), :]
         return x
 
 
@@ -100,7 +100,7 @@ class HybridCNNViT(nn.Module):
         super().__init__()
         
         self.cnn = CNNStem(in_channels=3, base_channels=64)
-        self.patch_embed = PatchEmbedding(in_channels=256, patch_size=8, embed_dim=embed_dim)
+        self.patch_embed = PatchEmbedding(in_channels=256, patch_size=2, embed_dim=embed_dim)
         
         self.transformer = nn.ModuleList([
             TransformerEncoderBlock(embed_dim, num_heads) for _ in range(num_layers)

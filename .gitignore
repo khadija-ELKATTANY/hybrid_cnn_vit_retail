@@ -27,3 +27,9 @@ checkpoints/
 .DS_Store
 .vscode/
 .idea/
+
+# Generated synthetic datasets
+data/generated/*.csv
+
+# Local backups
+*_backup.py
