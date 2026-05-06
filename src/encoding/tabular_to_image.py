@@ -1,7 +1,6 @@
-# src/encoding/tabular_to_image.py
 import numpy as np
-from typing import Dict, Tuple
-import math
+from typing import Dict, Tuple, List
+import matplotlib.pyplot as plt
 
 class CorrelationAwareEncoder:
     def __init__(self, image_size: int = 32, num_channels: int = 3, corr_method: str = "pearson"):
@@ -9,48 +8,55 @@ class CorrelationAwareEncoder:
         self.num_channels = num_channels
         self.corr_method = corr_method
         self.feature_to_pixel: Dict[int, Tuple[int, int]] = {}
+        self.feature_names: List[str] = None
         self.feature_order = None
+        self.corr_matrix = None
 
-    def fit(self, X: np.ndarray) -> "CorrelationAwareEncoder":
-        """Fit deterministic mapping using correlation."""
+    def fit(self, X: np.ndarray, feature_names: List[str] = None) -> "CorrelationAwareEncoder":
         n_features = X.shape[1]
-        if n_features > self.image_size ** 2:
-            raise ValueError("Too many features for grid")
+        self.feature_names = feature_names or [f"feat_{i}" for i in range(n_features)]
 
-        # Compute correlation matrix
+        # Correlation matrix
         if self.corr_method == "pearson":
-            corr = np.abs(np.corrcoef(X.T))
-        else:  # spearman
-            corr = np.abs(np.corrcoef(np.apply_along_axis(lambda x: np.argsort(np.argsort(x)), 0, X).T))
+            corr = np.corrcoef(X.T)
+        else:
+            ranks = np.apply_along_axis(lambda x: np.argsort(np.argsort(x)), 0, X)
+            corr = np.corrcoef(ranks.T)
         
-        np.fill_diagonal(corr, 0.0)
-        
-        # Importance + ordering
-        importance = corr.sum(axis=1)
+        self.corr_matrix = np.abs(corr)
+        np.fill_diagonal(self.corr_matrix, 0)
+
+        importance = self.corr_matrix.sum(axis=1)
         self.feature_order = np.argsort(-importance).tolist()
 
-        # Simple but effective placement: row-major (as in thesis)
-        # TODO (future): Use graph layout / TSP for better clustering of correlated groups
-        grid_positions = [(i, j) for i in range(self.image_size) 
-                         for j in range(self.image_size)]
-        
+        # Place on grid
+        grid_positions = [(i, j) for i in range(self.image_size) for j in range(self.image_size)]
         for idx, feat_idx in enumerate(self.feature_order):
             self.feature_to_pixel[feat_idx] = grid_positions[idx]
-        
+
         return self
 
     def transform_row(self, x: np.ndarray) -> np.ndarray:
-        """Convert one sample to 3-channel image."""
         img = np.zeros((self.num_channels, self.image_size, self.image_size), dtype=np.float32)
-        
         for feat_idx, (i, j) in self.feature_to_pixel.items():
             v = float(x[feat_idx])
             img[0, i, j] = np.tanh(v)
             img[1, i, j] = 1.0 / (1.0 + np.exp(-v))
             img[2, i, j] = np.sign(v) * np.log1p(abs(v))
-        
         return img
 
     def transform(self, X: np.ndarray) -> np.ndarray:
-        """Batch transform."""
         return np.stack([self.transform_row(row) for row in X])
+
+    def visualize_placement(self, save_path: str = "results/figures/feature_placement.png"):
+        plt.figure(figsize=(10, 10))
+        plt.imshow(np.zeros((self.image_size, self.image_size)), cmap='gray', alpha=0.3)
+        for feat_idx, (i, j) in self.feature_to_pixel.items():
+            name = self.feature_names[feat_idx] if self.feature_names else f"F{feat_idx}"
+            plt.text(j, i, name, ha='center', va='center', fontsize=10, 
+                    bbox=dict(facecolor='white', alpha=0.8))
+        plt.title("Correlation-Aware Feature Placement")
+        plt.axis('off')
+        plt.savefig(save_path)
+        plt.close()
+        print(f"✅ Placement saved: {save_path}")

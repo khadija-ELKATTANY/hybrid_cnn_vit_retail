@@ -1,47 +1,70 @@
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader, TensorDataset
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
+import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-class TabularToImageEncoder:
-    def __init__(self, grid_size=32):
-        self.grid_size = grid_size
-        self.scaler = StandardScaler()
-        
-    def fit(self, X: pd.DataFrame):
-        """Fit scaler on numeric features"""
-        numeric_cols = X.select_dtypes(include=[np.number]).columns
-        self.scaler.fit(X[numeric_cols])
-        return self
+from src.encoding.tabular_to_image import CorrelationAwareEncoder
+from src.models.hybrid_cnn_vit import HybridCNNViT
+
+class Config:
+    DATA_PATH = "data/raw/retail_dataset.csv"  
+    IMAGE_SIZE = 32
+
+def main():
+    config = Config()
     
-    def transform(self, X: pd.DataFrame):
-        """Convert tabular rows to fixed-size images"""
-        if isinstance(X, pd.DataFrame):
-            X = X.copy()
-            
-        numeric_cols = X.select_dtypes(include=[np.number]).columns
-        X_scaled = self.scaler.transform(X[numeric_cols])
-        
-        batch_size = X_scaled.shape[0]
-        images = np.zeros((batch_size, 3, self.grid_size, self.grid_size), dtype=np.float32)
-        
-        for i in range(batch_size):
-            flat = X_scaled[i]
-            n_features = len(flat)
-            
-            # Create a square grid by repeating/padding features
-            side = self.grid_size
-            grid = np.zeros((side, side), dtype=np.float32)
-            
-            # Fill the grid (repeat features to fill the space)
-            idx = 0
-            for row in range(side):
-                for col in range(side):
-                    grid[row, col] = flat[idx % n_features]
-                    idx += 1
-            
-            # 3 channels as in thesis
-            images[i, 0] = np.tanh(grid)                    # Channel 1
-            images[i, 1] = 1 / (1 + np.exp(-grid))         # Channel 2 - sigmoid
-            images[i, 2] = np.sign(grid) * np.log1p(np.abs(grid))  # Channel 3
-        
-        return images
+    # Load data (adjust column names if needed)
+    df = pd.read_csv(config.DATA_PATH)
+    feature_cols = ['Price', 'Stock_Quantity', 'Warranty_Period', 'Rating']
+    target_col = 'Category'   # Change if your target column name is different
+    
+    X = df[feature_cols].values
+    y = df[target_col].values
+    
+    le = LabelEncoder()
+    y = le.fit_transform(y)
+    
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+    
+    # Correlation-Aware Encoder (Core Contribution)
+    encoder = CorrelationAwareEncoder(image_size=config.IMAGE_SIZE)
+    encoder.fit(X_train, feature_names=feature_cols)
+    encoder.visualize_placement()
+    
+    X_train_img = encoder.transform(X_train)
+    X_test_img = encoder.transform(X_test)
+    
+    # To Tensor
+    train_ds = TensorDataset(torch.tensor(X_train_img), torch.tensor(y_train))
+    train_loader = DataLoader(train_ds, batch_size=64, shuffle=True)
+    
+    model = HybridCNNViT(num_classes=len(le.classes_))
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+    
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.001)
+    
+    print("Starting training...")
+    for epoch in range(5):
+        model.train()
+        for xb, yb in train_loader:
+            xb, yb = xb.to(device), yb.to(device)
+            optimizer.zero_grad()
+            outputs = model(xb)
+            loss = criterion(outputs, yb)
+            loss.backward()
+            optimizer.step()
+        print(f"Epoch {epoch+1} completed")
+    
+    print("✅ Training finished!")
+    torch.save(model.state_dict(), "results/model_final.pth")
+
+if __name__ == "__main__":
+    main()
